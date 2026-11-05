@@ -8,8 +8,9 @@
  * mark. Notifies on the same terminal kinds the gateway watcher pings
  * (gateway/kanban_watchers.py): 'completed' (kanban_db.complete_task —
  * payload: summary + artifacts), 'blocked' (payload: reason), 'gave_up'
- * (payload: error), 'crashed', 'timed_out', and 'block_loop_detected'
- * (payload: reason — the routed-to-triage orchestration handoff).
+ * (payload: error), terminal 'crashed' events (retry-routed crashes only
+ * advance the cursor), 'timed_out', and 'block_loop_detected' (payload:
+ * reason — the routed-to-triage orchestration handoff).
  *
  * Two delivery doors, complementary by design:
  *  - `host.notify` — the in-app toast, covers the foreground case;
@@ -206,6 +207,11 @@ export async function onKanbanEventsFrame(slug: string, events?: CompletionEvent
 
     cursor = ev.id
     seenEventIdByBoard.set(slug, cursor)
+
+    if (ev.kind === 'crashed' && (ev.payload?.retry_status === 'ready' || ev.payload?.retry_status === 'review')) {
+      continue
+    }
+
     const spec = TERMINAL_NOTIFY.get(ev.kind ?? '')
 
     if (spec) {

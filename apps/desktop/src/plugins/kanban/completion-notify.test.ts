@@ -399,6 +399,53 @@ describe('notification failure isolation', () => {
 })
 
 describe('terminal kinds beyond completed', () => {
+  it('notifies once when retry crashes end in gave_up', async () => {
+    const m = await loadModule()
+    m.bindCompletionNotify(makeRest(() => 100) as never)
+
+    await m.onKanbanEventsFrame('smoke', [
+      ev(101, 'crashed', { retry_status: 'ready' }, 'task-1'),
+      ev(102, 'crashed', { retry_status: 'ready' }, 'task-1'),
+      ev(103, 'gave_up', { trigger_outcome: 'crashed' }, 'task-1')
+    ])
+
+    expect(hostMock.notify).toHaveBeenCalledTimes(1)
+    expect(lastNotify().kind).toBe('error')
+  })
+
+  it('only notifies completion when a retry crash later succeeds', async () => {
+    const m = await loadModule()
+    m.bindCompletionNotify(makeRest(() => 100) as never)
+
+    const retried = await m.onKanbanEventsFrame('smoke', [
+      ev(101, 'crashed', { retry_status: 'ready' }, 'task-1')
+    ])
+
+    expect(retried).toBe(false)
+    expect(hostMock.notify).not.toHaveBeenCalled()
+
+    await m.onKanbanEventsFrame('smoke', [
+      ev(101, 'crashed', { retry_status: 'ready' }, 'task-1'),
+      ev(102, 'completed', { summary: 'Done' }, 'task-1')
+    ])
+
+    expect(hostMock.notify).toHaveBeenCalledTimes(1)
+    expect(lastNotify()).toMatchObject({ kind: 'success', title: 'Task completed' })
+  })
+
+  it('suppresses a retry crash routed back to review', async () => {
+    const m = await loadModule()
+    m.bindCompletionNotify(makeRest(() => 100) as never)
+
+    await m.onKanbanEventsFrame('smoke', [
+      ev(101, 'crashed', { retry_status: 'review' }, 'task-1'),
+      ev(102, 'completed', { summary: 'Done' }, 'task-1')
+    ])
+
+    expect(hostMock.notify).toHaveBeenCalledTimes(1)
+    expect(lastNotify().kind).toBe('success')
+  })
+
   it('blocked notifies with the payload reason and a warning toast', async () => {
     const m = await loadModule()
     m.bindCompletionNotify(makeRest(() => 100) as never)
